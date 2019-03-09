@@ -1,31 +1,12 @@
 /*
-ZE_XHARBOUR - compatibilidade xHarbour
 
-inclusa aqui w32ole.prg da hbnfe
+Este fonte funciona com XHarbour + Fivewin.
+
 */
 
-#ifdef __XHARBOUR__
-FUNCTION win_OleCreateObject( cObject )
-   RETURN xhb_CreateObject( cObject )
+// w32ole.prg baseada na win32ole.prg v 1.82 2005/04/29 do xharbour
 
-FUNCTION hb_MemoWrit( cFile, cText )
-   RETURN Memowrit( cFile, cText, .T. )
-
-FUNCTION hb_At( cText, nStart, nEnd )
-   RETURN At( cText, nStart, nEnd )
-
-FUNCTION hb_Eol()
-   RETURN Chr(13) + Chr(10)
-
-FUNCTION wapi_MessageBox( nHwnd, cText, cTitle )
-   RETURN Alert( cText )
-
-FUNCTION hb_Hash()
-   RETURN Hash()
-
-* w32ole.prg baseada na win32ole.prg v 1.82 2005/04/29 do xharbour
-
-STATIC bOleInitialized:=.F.
+STATIC bOleInitialized := .F.
 
 #ifndef __PLATFORM__Windows
 
@@ -34,7 +15,7 @@ STATIC bOleInitialized:=.F.
   Function xhb_CreateObject()
   Return NIL
 
-  FUNCTION xhb_GetActiveObject( cString )
+  Function xhb_GetActiveObject( cString )
     HB_SYMBOL_UNUSED( cString )
   Return NIL
 
@@ -45,14 +26,15 @@ STATIC bOleInitialized:=.F.
 #include "vt.ch"
 #include "oleerr.ch"
 
-FUNCTION xhb_CreateObject( cString, cLicense )
+//----------------------------------------------------------------------------
+Function xhb_CreateObject( cString, cLicense )
 
-   RETURN TOleAutoX():New( cString, , cLicense )
+RETURN TOleAutoX():New( cString, , cLicense )
+//----------------------------------------------------------------------------
+Function xhb_GetActiveObject( cString )
 
-FUNCTION xhb_GetActiveObject( cString )
-
-   RETURN TOleAutoX():GetActiveObject( cString )
-
+RETURN TOleAutoX():GetActiveObject( cString )
+//----------------------------------------------------------------------------
 CLASS TOleAutoX
 
    DATA hObj
@@ -74,8 +56,8 @@ CLASS TOleAutoX
 
    DESTRUCTOR Release()
 
-   ENDCLASS
-
+ENDCLASS
+//--------------------------------------------------------------------
 METHOD New( uObj, cClass ) CLASS TOleAutoX
 
    LOCAL oErr
@@ -141,8 +123,8 @@ METHOD New( uObj, cClass ) CLASS TOleAutoX
       ::hObj := 0
    ENDIF
 
-   RETURN SELF
-
+RETURN Self
+//--------------------------------------------------------------------
 // Destructor!
 PROCEDURE Release() CLASS TOleAutoX
 
@@ -150,9 +132,10 @@ PROCEDURE Release() CLASS TOleAutoX
        OleReleaseObject( ::hObj )
    ENDIF
 
-   RETURN
-
+RETURN
+//--------------------------------------------------------------------
 METHOD GetActiveObject( cClass ) CLASS TOleAutoX
+//--------------------------------------------------------------------
 
    LOCAL oErr
 
@@ -199,16 +182,16 @@ METHOD GetActiveObject( cClass ) CLASS TOleAutoX
       ::hObj := 0
    ENDIF
 
-   RETURN SELF
-
+RETURN Self
+//--------------------------------------------------------------------
 METHOD Invoke( ... ) CLASS TOleAutoX
-
+//--------------------------------------------------------------------
    LOCAL cMethod := HB_aParams()[1]
 
-   RETURN HB_ExecFromArray( Self, cMethod, aDel( HB_aParams(), 1, .T. ) )
-
+RETURN HB_ExecFromArray( Self, cMethod, aDel( HB_aParams(), 1, .T. ) )
+//--------------------------------------------------------------------
 METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
-
+//--------------------------------------------------------------------
    LOCAL xRet
 
    IF PCount() == 1
@@ -222,7 +205,7 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
       xRet := ::SetItem( xIndex, xValue )
    END
 
-   RETURN xRet
+RETURN xRet
 
 #pragma BEGINDUMP
 
@@ -237,10 +220,10 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
    #include "hbvm.h"
    #include "hbdate.h"
    #include "hbfast.h"
-#include "hbapi.h"
-#include "hbstack.h"
+   #include "hbapi.h"
+   #include "hbstack.h"
 
-#include <ctype.h>
+   #include <ctype.h>
    #include <windows.h>
    #include <ole2.h>
    #include <oleauto.h>
@@ -273,7 +256,6 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
   static BSTR bstrMessage;
   static DISPID lPropPut = DISPID_PROPERTYPUT;
   static UINT uArgErr;
-
 
    HB_FUNC_STATIC( OLE_INITIALIZE )
    {
@@ -313,7 +295,6 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
   }
 
   //---------------------------------------------------------------------------//
-
 
   static BSTR AnsiToSysString( LPSTR cString )
   {
@@ -652,41 +633,10 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
                    // Can't CLEAR this Variant
                    continue;
 
-                 /*
-                 case VT_BYREF | VT_I2:
-                   //printf( "Int %i\n", pDispParams->rgvarg[ n ].n1.n2.n3.iVal );
-                   hb_itemPutNI( aPrgParams[ n ], ( int ) pDispParams->rgvarg[ n ].n1.n2.n3.iVal );
-                   break;
-
-                 case VT_BYREF | VT_I4:
-                   //printf( "Long %ld\n", pDispParams->rgvarg[ n ].n1.n2.n3.lVal );
-                   hb_itemPutNL( aPrgParams[ n ], ( LONG ) pDispParams->rgvarg[ n ].n1.n2.n3.lVal );
-                   break;
-
-#ifndef HB_LONG_LONG_OFF
-                 case VT_BYREF | VT_I8:
-                   //printf( "Long %Ld\n", pDispParams->rgvarg[ n ].n1.n2.n3.llVal );
-                   hb_itemPutNLL( aPrgParams[ n ], ( LONGLONG ) pDispParams->rgvarg[ n ].n1.n2.n3.llVal );
-                   break;
-#endif
-
-                 case VT_BYREF | VT_R8:
-                   //printf( "Double\n" );
-                   hb_itemPutND( aPrgParams[ n ],  pDispParams->rgvarg[ n ].n1.n2.n3.dblVal );
-                   break;
-                 */
-
                  case VT_BYREF | VT_DATE:
                    //printf( "Date\n" );
                    hb_itemPutDS( aPrgParams[ n ], DblToDate( *( pDispParams->rgvarg[ n ].n1.n2.n3.pdblVal ) ) );
                    break;
-
-                 /*
-                 case VT_BYREF | VT_EMPTY:
-                   //printf( "Nil\n" );
-                   hb_itemClear( aPrgParams[ n ] );
-                   break;
-                 */
 
                  default:
                    TraceLog( NULL, "*** Unexpected Type: %i***\n", pDispParams->rgvarg[ n ].n1.n2.vt );
@@ -727,12 +677,6 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
   static void RetValue( void )
   {
      LPSTR cString;
-
-     /*
-     printf( "Type: %i\n", RetVal.n1.n2.vt );
-     fflush( stdout );
-     getchar();
-     */
 
      switch( RetVal.n1.n2.vt )
      {
@@ -1430,7 +1374,7 @@ METHOD Collection( xIndex, xValue ) CLASS TOleAutoX
 
 #pragma ENDDUMP
 
-
+//----------------------------------------------------------------------------
 INIT PROCEDURE Initialize_Ole
 
    IF ! bOleInitialized
@@ -1438,14 +1382,14 @@ INIT PROCEDURE Initialize_Ole
       Ole_Initialize()
    ENDIF
 
-   RETURN
-
+Return
+//----------------------------------------------------------------------------
 EXIT PROCEDURE __DEACTIVATE__OLE
 
    UnInitialize_ole()
 
-   RETURN
-
+Return
+//----------------------------------------------------------------------------
 PROCEDURE UnInitialize_Ole
 
    IF bOleInitialized
@@ -1453,5 +1397,6 @@ PROCEDURE UnInitialize_Ole
       Ole_UnInitialize()
    ENDIF
 
-   RETURN
+Return
+
 #endif

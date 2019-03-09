@@ -7,11 +7,6 @@ Contribuição DaEvento: MSouzaRunner
 #include "common.ch"
 #include "hbclass.ch"
 #include "harupdf.ch"
-#ifndef __XHARBOUR__
-#include "hbwin.ch"
-// #include "hbcompat.ch"
-#endif
-// #include "hbnfe.ch"
 #define LAYOUT_LOGO_ESQUERDA        1
 #define LAYOUT_LOGO_DIREITA         2
 #define LAYOUT_LOGO_EXPANDIDO       3
@@ -109,13 +104,13 @@ METHOD BuscaDadosXML() CLASS hbnfeDaEvento
       ::aInfEvento := XmlToHash( XmlNode( ::cXmlEvento, "retEvento" ), { "cStat", "xMotivo", "dhRegEvento", "nProt" }, ::aInfEvento )
    ENDIF
    ::aIde := hb_Hash()
-   ::aIde[ "mod" ]   := SubStr( ::cChaveEvento, 21, 2 ) // XmlNode( cIde, "mod" )
+   ::aIde[ "mod" ]   := DfeModFis( ::cChaveEvento ) // XmlNode( cIde, "mod" )
    ::aIde[ "serie" ] := SubStr( ::cChaveEvento, 23, 3 ) // XmlNode( cIde, "serie" )
-   ::aIde[ "nNF" ]   := SubStr( ::cChaveEvento, 26, 9 ) // XmlNode( cIde, "nNF" )
+   ::aIde[ "nNF" ]   := DfeNumero( ::cChaveEvento ) // XmlNode( cIde, "nNF" )
    ::aIde[ "dhEmi" ] := XmlNode( XmlNode( ::cXmlDocumento, "ide" ), "dhEmi" )
 
    ::aEmit := XmlToHash( XmlNode( ::cXmlDocumento, "emit" ), { "xNome", "xFant", "xLgr", "nro", "xBairro", "cMun", "xMun", "UF", "CEP", "fone", "IE" } )
-   ::aEmit[ "CNPJ" ]    := SubStr( ::cChaveEvento, 7, 14 )
+   ::aEmit[ "CNPJ" ]    := DfeEmitente( ::cChaveEvento )
    ::aEmit[ "xNome" ]   := XmlToString( ::aEmit[ "xNome" ] )
    ::cTelefoneEmitente  := ::FormataTelefone( ::aEmit[ "fone" ] )
 
@@ -153,15 +148,6 @@ METHOD GeraPDF( cFilePDF ) CLASS hbNfeDaEvento
    CASE ::cFonteCorrecoes == "Courier-Bold" ;    ::oPdfFontCorrecoes := HPDF_GetFont( ::oPdf, "Courier-Bold",    "CP1252" )
    OTHERWISE ;                                   ::oPdfFontCorrecoes := HPDF_GetFont( ::oPdf, "Courier",         "CP1252" )
    ENDCASE
-
-#ifdef __XHARBOUR__
-   IF ! File( 'fontes\Code128bWinLarge.afm' ) .OR. ! File( 'fontes\Code128bWinLarge.pfb' )
-      ::cRetorno := "Arquivos: fontes\Code128bWinLarge, nao encontrados"
-      RETURN cRetorno
-   ENDIF
-   ::cFonteCode128  := HPDF_LoadType1FontFromFile( ::oPdf, 'fontes\Code128bWinLarge.afm', 'fontes\Code128bWinLarge.pfb' )   // Code 128
-   ::cFonteCode128F := HPDF_GetFont( ::oPdf, ::cFonteCode128, "WinAnsiEncoding" )
-#endif
 
    // final da criacao e definicao do objeto pdf
 
@@ -231,43 +217,43 @@ METHOD Cabecalho() CLASS hbnfeDaEvento
       ENDIF
    ENDIF
 
-/*
-      IF EMPTY( ::cLogoFile )
-          ::DrawTexto( 71, ::nLinhaPdf   , 399, Nil, "IDENTIFICAÇÃO DO EMITENTE" , HPDF_TALIGN_LEFT, ::oPDFFontNormal, 6 )
-          ::DrawTexto( 71, ::nLinhaPDF - 6 , 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,1)) , HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
-          ::DrawTexto( 71, ::nLinhaPDF - 18, 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,2)), HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
-          ::DrawTexto( 71, ::nLinhaPDF - 30, 399, Nil, ::aEmit[ "xLgr" ]+" "+::aEmit[ "nro" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-          ::DrawTexto( 71, ::nLinhaPDF - 38, 399, Nil, ::aEmit[ "xBairro" ]+" - "+ Transform( ::aEmit[ "CEP" ], "@R 99999-999"), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-          ::DrawTexto( 71, ::nLinhaPDF - 46, 399, Nil, ::aEmit[ "xMun" ]+" - "+::aEmit[ "UF" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-          ::DrawTexto( 71, ::nLinhaPDF - 54, 399, Nil, IF( Empty(::cTelefoneEmitente),"", "FONE: "+::cTelefoneEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-          ::DrawTexto( 71, ::nLinhaPDF - 62, 399, Nil, TRIM(::cSiteEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-          ::DrawTexto( 71, ::nLinhaPDF - 70, 399, Nil, TRIM(::cEmailEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-       ELSE
-          IF ::nLogoStyle = LAYOUT_LOGO_EXPANDIDO
-             ::DrawJPEGImage( ::cLogoFile, 6, ::nLinhaPdf - (72+6), 328, 72 )
-          ELSEIF ::nLogoStyle = LAYOUT_LOGO_ESQUERDA
-             ::DrawJPEGImage( ::cLogoFile, 71, ::nLinhaPdf - (72+6), 62, 72 )
-              ::DrawTexto( 135, ::nLinhaPDF - 6 , 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,1)) , HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
-              ::DrawTexto( 135, ::nLinhaPDF - 18, 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,2)), HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
-              ::DrawTexto( 135, ::nLinhaPDF - 30, 399, Nil, ::aEmit[ "xLgr" ]+" "+::aEmit[ "nro" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-              ::DrawTexto( 135, ::nLinhaPDF - 38, 399, Nil, ::aEmit[ "xBairro" ]+" - "+ Transform( ::aEmit[ "CEP" ], "@R 99999-999"), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-              ::DrawTexto( 135, ::nLinhaPDF - 46, 399, Nil, ::aEmit[ "xMun" ]+" - "+::aEmit[ "UF" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-              ::DrawTexto( 135, ::nLinhaPDF - 54, 399, Nil, IF( Empty(::cTelefoneEmitente),"","FONE: "+::cTelefoneEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-              ::DrawTexto( 135, ::nLinhaPDF - 62, 399, Nil, TRIM(::cSiteEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-              ::DrawTexto( 135, ::nLinhaPDF - 70, 399, Nil, TRIM(::cEmailEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-          ELSEIF ::nLogoStyle = LAYOUT_LOGO_DIREITA
-             ::DrawJPEGImage( ::cLogoFile, 337, ::nLinhaPdf - (72+6), 62, 72 )
-            ::DrawTexto( 71, ::nLinhaPDF - 6 , 335, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,1)) , HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
-            ::DrawTexto( 71, ::nLinhaPDF - 18, 335, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,2)), HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
-            ::DrawTexto( 71, ::nLinhaPDF - 30, 335, Nil, ::aEmit[ "xLgr" ]+" "+::aEmit[ "nro" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-            ::DrawTexto( 71, ::nLinhaPDF - 38, 335, Nil, ::aEmit[ "xBairro" ]+" - "+ Transform( ::aEmit[ "CEP" ], "@R 99999-999"), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-            ::DrawTexto( 71, ::nLinhaPDF - 46, 335, Nil, ::aEmit[ "xMun" ]+" - "+::aEmit[ "UF" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-            ::DrawTexto( 71, ::nLinhaPDF - 54, 335, Nil, IF( Empty(::cTelefoneEmitente),"","FONE: "+::cTelefoneEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-            ::DrawTexto( 71, ::nLinhaPDF - 62, 335, Nil, TRIM(::cSiteEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-            ::DrawTexto( 71, ::nLinhaPDF - 70, 335, Nil, TRIM(::cEmailEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-           ENDIF
-      ENDIF
-*/
+   /*
+   IF EMPTY( ::cLogoFile )
+   ::DrawTexto( 71, ::nLinhaPdf   , 399, Nil, "IDENTIFICAÇÃO DO EMITENTE" , HPDF_TALIGN_LEFT, ::oPDFFontNormal, 6 )
+   ::DrawTexto( 71, ::nLinhaPDF - 6 , 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,1)) , HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
+   ::DrawTexto( 71, ::nLinhaPDF - 18, 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,2)), HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
+   ::DrawTexto( 71, ::nLinhaPDF - 30, 399, Nil, ::aEmit[ "xLgr" ]+" "+::aEmit[ "nro" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 38, 399, Nil, ::aEmit[ "xBairro" ]+" - "+ Transform( ::aEmit[ "CEP" ], "@R 99999-999"), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 46, 399, Nil, ::aEmit[ "xMun" ]+" - "+::aEmit[ "UF" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 54, 399, Nil, IF( Empty(::cTelefoneEmitente),"", "FONE: "+::cTelefoneEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 62, 399, Nil, TRIM(::cSiteEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 70, 399, Nil, TRIM(::cEmailEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ELSE
+   IF ::nLogoStyle = LAYOUT_LOGO_EXPANDIDO
+   ::DrawJPEGImage( ::cLogoFile, 6, ::nLinhaPdf - (72+6), 328, 72 )
+   ELSEIF ::nLogoStyle = LAYOUT_LOGO_ESQUERDA
+   ::DrawJPEGImage( ::cLogoFile, 71, ::nLinhaPdf - (72+6), 62, 72 )
+   ::DrawTexto( 135, ::nLinhaPDF - 6 , 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,1)) , HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
+   ::DrawTexto( 135, ::nLinhaPDF - 18, 399, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,2)), HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
+   ::DrawTexto( 135, ::nLinhaPDF - 30, 399, Nil, ::aEmit[ "xLgr" ]+" "+::aEmit[ "nro" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 135, ::nLinhaPDF - 38, 399, Nil, ::aEmit[ "xBairro" ]+" - "+ Transform( ::aEmit[ "CEP" ], "@R 99999-999"), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 135, ::nLinhaPDF - 46, 399, Nil, ::aEmit[ "xMun" ]+" - "+::aEmit[ "UF" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 135, ::nLinhaPDF - 54, 399, Nil, IF( Empty(::cTelefoneEmitente),"","FONE: "+::cTelefoneEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 135, ::nLinhaPDF - 62, 399, Nil, TRIM(::cSiteEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 135, ::nLinhaPDF - 70, 399, Nil, TRIM(::cEmailEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ELSEIF ::nLogoStyle = LAYOUT_LOGO_DIREITA
+   ::DrawJPEGImage( ::cLogoFile, 337, ::nLinhaPdf - (72+6), 62, 72 )
+   ::DrawTexto( 71, ::nLinhaPDF - 6 , 335, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,1)) , HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
+   ::DrawTexto( 71, ::nLinhaPDF - 18, 335, Nil, TRIM( MemoLine( ::aEmit[ "xNome" ],30,2)), HPDF_TALIGN_CENTER, ::oPDFFontBold, 12 )
+   ::DrawTexto( 71, ::nLinhaPDF - 30, 335, Nil, ::aEmit[ "xLgr" ]+" "+::aEmit[ "nro" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 38, 335, Nil, ::aEmit[ "xBairro" ]+" - "+ Transform( ::aEmit[ "CEP" ], "@R 99999-999"), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 46, 335, Nil, ::aEmit[ "xMun" ]+" - "+::aEmit[ "UF" ], HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 54, 335, Nil, IF( Empty(::cTelefoneEmitente),"","FONE: "+::cTelefoneEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 62, 335, Nil, TRIM(::cSiteEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 71, ::nLinhaPDF - 70, 335, Nil, TRIM(::cEmailEmitente), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ENDIF
+   ENDIF
+   */
 
    IF ::aInfEvento[ "tpEvento" ] == "110110"
       ::DrawTexto( 292, ::nLinhaPDF -2, 554, Nil, "CC-e", HPDF_TALIGN_CENTER, ::oPDFFontBold, 18 )
@@ -319,7 +305,7 @@ METHOD Cabecalho() CLASS hbnfeDaEvento
    ::DrawTexto( 341, ::nLinhaPdf,     390, Nil, "SERIE", HPDF_TALIGN_CENTER, ::oPDFFontNormal, 6 )
    ::DrawTexto( 341, ::nLinhaPDF -6,   390, Nil, ::aIde[ "serie" ], HPDF_TALIGN_CENTER, ::oPDFFontBold, 11 )
 
-   IF Substr( ::cChaveEvento, 21, 2 ) == "57" // At( "retEventoCTe",::cXmlEvento) > 0
+   IF DfeModFis( ::cChaveEvento ) == "57" // At( "retEventoCTe",::cXmlEvento) > 0
       // NUMERO CTE
       ::DrawTexto( 391, ::nLinhaPdf,     480, Nil, "NUMERO DO CT-e", HPDF_TALIGN_CENTER, ::oPDFFontNormal, 6 )
       ::DrawTexto( 391, ::nLinhaPDF -6,   480, Nil, SubStr( StrZero( Val( ::aIde[ "nNF" ] ), 9 ), 1, 3 ) + "." + SubStr( StrZero( Val( ::aIde[ "nNF" ] ), 9 ), 4, 3 ) + "." + SubStr( StrZero( Val( ::aIde[ "nNF" ] ), 9 ), 7, 3 ), HPDF_TALIGN_CENTER, ::oPDFFontBold, 11 )
@@ -490,6 +476,7 @@ METHOD Eventos() CLASS hbnfeDaEvento
          ::nLinhaPdf -= 12
       NEXT
    ENDIF
+
    RETURN NIL
 
 METHOD Rodape() CLASS hbnfeDaEvento
@@ -531,7 +518,7 @@ METHOD Rodape() CLASS hbnfeDaEvento
       cTextoCond := 'III - A data de emissão ou de saída.'
       ::DrawTexto( 34, ::nLinhaPdf -108,564, Nil, cTextoCond, HPDF_TALIGN_LEFT, ::oPDFFontNormal, nTamFonte )
       // Observações:
-        ::nLinhaPdf -= 124
+      ::nLinhaPdf -= 124
    ELSE
       ::DrawBox( 30, ::nLinhaPDF -102,   535,  94, ::nLarguraBox )
       cTextoCond := 'A Carta de Correção é disciplinada pelo § 1º-A do art. 7º do Convênio S/N, de 15 de dezembro de'
@@ -549,7 +536,7 @@ METHOD Rodape() CLASS hbnfeDaEvento
       cTextoCond := 'III - A data de emissão ou de saída.'
       ::DrawTexto( 34, ::nLinhaPdf -84,564, Nil, cTextoCond, HPDF_TALIGN_LEFT, ::oPDFFontNormal, nTamFonte )
       // Observações:
-        ::nLinhaPdf -= 100
+      ::nLinhaPdf -= 100
    ENDIF
 
    IF ::cFonteEvento == "Times"

@@ -13,14 +13,13 @@ Os campos que podem ser colocados na mesma coluna são:
 - “Base de Cálculo do ICMS por Substituição Tributária” com “Valor do ICMS por Substituição Tributária”;
 - “Valor do ICMS Próprio” com “Valor do IPI”
 - “Alíquota do ICMS” com “Alíquota do IPI”.
+
+2019 - Quadros opcionais para Local de Coleta e Local de Entrega
 */
 
 #include "common.ch"
 #include "hbclass.ch"
 #include "harupdf.ch"
-#ifndef __XHARBOUR__
-   #include "hbwin.ch"
-#endif
 
 #define LAYOUT_LOGO_ESQUERDA   1
 #define LAYOUT_LOGO_DIREITA    2
@@ -69,17 +68,19 @@ CREATE CLASS hbNFeDaNFe INHERIT hbNFeDaGeral
    METHOD GeraPDF( cFilePDF )
    METHOD NovaPagina()
    METHOD SaltaPagina()
-   METHOD CabecalhoRetrato()
-   METHOD Destinatario()
-   METHOD Duplicatas()
-   METHOD Canhoto()
-   METHOD DadosImposto()
-   METHOD DadosTransporte()
-   METHOD CabecalhoProdutos()
-   METHOD DesenhaBoxProdutos( nLinhaFinalProd, nAlturaQuadroProdutos )
-   METHOD Produtos()
-   METHOD TotalServico()
-   METHOD DadosAdicionais()
+   METHOD QuadroNotaFiscal()
+   METHOD QuadroDestinatario()
+   METHOD QuadroLocalColeta()
+   METHOD QuadroLocalEntrega()
+   METHOD QuadroDuplicatas()
+   METHOD QuadroCanhoto()
+   METHOD QuadroImposto()
+   METHOD QuadroTransporte()
+   METHOD QuadroProdutosTitulo()
+   METHOD QuadroProdutosDesenho( nLinhaFinalProd, nAlturaQuadroProdutos )
+   METHOD QuadroProdutos()
+   METHOD QuadroTotalServico()
+   METHOD QuadroDadosAdicionais()
    METHOD ProcessaItens( cXml, nItem )
    METHOD CalculaLayout()
    METHOD ItensDaFolha( nFolha )
@@ -112,6 +113,7 @@ CREATE CLASS hbNFeDaNFe INHERIT hbNFeDaGeral
    VAR aVeicTransp
    VAR aReboque
    VAR cCobranca
+   VAR aDetPag
    VAR aInfAdic
    VAR aObsCont
    VAR aObsFisco
@@ -211,8 +213,10 @@ METHOD ToPDF( cXmlNFE, cFilePDF, cXmlCancel ) CLASS hbNFeDaNFe
 
 METHOD BuscaDadosXML() CLASS hbNFeDaNFe
 
+   LOCAL cText
+
    ::aIde := XmlToHash( XmlNode( ::cXml, "ide" ), { "cUF", "cNF", "natOp", "indPag", "mod", "serie", "nNF", "dhEmi", "dhSaiEnt", "tpNF", "cMunFG", "tpImp", "tpEmis", ;
-             "cDV", "tpAmb", "finNFe", "procEmi", "verProc" } )
+      "cDV", "tpAmb", "finNFe", "procEmi", "verProc" } )
    IF Empty( ::aIde[ "dhEmi" ] ) // NFE 2.0
       ::aIde[ "dhEmi" ] := XmlNode( XmlNode( ::cXml, "ide" ), "dEmi" )
    ENDIF
@@ -220,7 +224,7 @@ METHOD BuscaDadosXML() CLASS hbNFeDaNFe
    //   ::aIde[ "dhSaiEnt" ] := XmlNode( XmlNode( ::cXml, "ide" ), "dSaiEnt" )
    //ENDIF
    ::aEmit       := XmlToHash( XmlNode( ::cXml, "emit" ), { "CNPJ", "CPF", "xNome", "xFant", "xLgr", "nro", "xBairro", "cMun", "xMun", "UF", "CEP", "cPais", "xPais", ;
-                    "fone", "IE", "IEST", "IM", "CNAE", "CRT", "fone" } )
+      "fone", "IE", "IEST", "IM", "CNAE", "CRT", "fone" } )
    ::aDest       := XmlToHash( XmlNode( ::cXml, "dest" ), { "CNPJ", "CPF", "xNome", "xLgr", "nro", "xCpl", "xBairro", "cMun", "xMun", "UF", "CEP", "cPais", "xPais", "fone", "IE", "ISUF", "email" } )
    ::aRetirada   := XmlToHash( XmlNode( ::cXml, "retirada" ), { "CNPJ", "CPF", "xLgr", "nro", "xCpl", "xBairro", "cMun", "xMun", "UF" } )
    ::aEntrega    := XmlToHash( XmlNode( ::cXml, "entrega" ), { "CNPJ", "CPF", "xLgr", "nro", "xCpl", "xBairro", "cMun", "xMun", "UF" } )
@@ -231,6 +235,7 @@ METHOD BuscaDadosXML() CLASS hbNFeDaNFe
    ::aVeicTransp := XmlToHash( XmlNode( XmlNode( ::cXml, "transp" ), "veicTransp" ), { "placa", "UF", "RNTC" } )
    ::aReboque    := XmlToHash( XmlNode( XmlNode( ::cXml, "reboque" ), "veicTransp" ), { "placa", "UF", "RNTC" } )
    ::cCobranca   := XmlNode( ::cXml, "cobr" )
+   ::aDetPag     := MultipleNodeToArray( XmlNode( ::cXml, "pag" ), "detPag" )
    ::aInfAdic    := XmlToHash( XmlNode( ::cXml, "infAdic" ), { "infAdFisco", "infCpl" } )
    ::aObsCont    := XmlToHash( XmlNode( XmlNode( ::cXml, "infAdic" ), "obsCont" ), { "xCampo", "xTexto" } )
    ::aObsFisco   := XmlToHash( XmlNode( XmlNode( ::cXml, "infAdic" ), "obsFisco" ), { "xCampo", "xTexto" } )
@@ -253,13 +258,12 @@ METHOD BuscaDadosXML() CLASS hbNFeDaNFe
       ::aInfAdic[ "infCpl" ] += ";" + TrimXml( "LOCAL DE RETIRADA: " + ::aRetirada[ "xLgr" ] + " " + ::aRetirada[ "nro" ] + " " + ;
          ::aRetirada[ "xBairro" ] + " " + ::aRetirada[ "xMun" ] + " " + ::aRetirada[ "UF" ] )
    ENDIF
-   ::aInfAdic[ "infCpl" ] := StrTran( ::aInfAdic[ "infCpl" ], ";;", ";" )
-   ::aInfAdic[ "infCpl" ] := StrTran( ::aInfAdic[ "infCpl" ], "|", ";" )
-   ::aInfAdic[ "infCpl" ] := StrTran( ::aInfAdic[ "infCpl" ], ";", Chr(13) + Chr(10) )
-   ::aInfAdic[ "infAdFisco" ] := StrTran( ::aInfAdic[ "infAdFisco" ], ";", Chr(13) + Chr(10) )
-
+   FOR EACH cText IN { ";;", ";", "|" }
+      ::aInfAdic[ "infCpl" ]     := StrTran( ::aInfAdic[ "infCpl" ], cText, hb_Eol() )
+      ::aInfAdic[ "infAdFisco" ] := StrTran( ::aInfAdic[ "infAdFisco" ], cText, hb_Eol() )
+   NEXT
    IF ! Empty( ::aInfAdic[ "infAdFisco" ] )
-      ::aInfAdic[ "infCpl" ]     := ::aInfAdic[ "infAdFisco" ] + Chr(13) + Chr(10) + ::aInfAdic[ "infCpl" ]
+      ::aInfAdic[ "infCpl" ]     := ::aInfAdic[ "infAdFisco" ] + hb_Eol() + ::aInfAdic[ "infCpl" ]
       ::aInfAdic[ "infAdFisco" ] := ""
    ENDIF
 
@@ -297,16 +301,18 @@ METHOD GeraPDF( cFilePDF ) CLASS hbNFeDaNFe
    HPDF_Page_SetFontAndSize( ::oPdfPage, ::oPDFFontNormal, LAYOUT_FONTSIZE )
    ::CalculaLayout()
 
-   ::Canhoto()
-   ::CabecalhoRetrato()
-   ::Destinatario()
-   ::Duplicatas()
-   ::DadosImposto()
-   ::DadosTransporte()
-   ::CabecalhoProdutos()
-   ::Produtos()
-   ::TotalServico()
-   ::DadosAdicionais()
+   ::QuadroCanhoto()
+   ::QuadroNotaFiscal()
+   ::QuadroDestinatario()
+   ::QuadroLocalColeta()
+   ::QuadroLocalEntrega()
+   ::QuadroDuplicatas()
+   ::QuadroImposto()
+   ::QuadroTransporte()
+   ::QuadroProdutosTitulo()
+   ::QuadroProdutos()
+   ::QuadroTotalServico()
+   ::QuadroDadosAdicionais()
    ::Desenvolvedor()
 
    HPDF_SaveToFile( ::oPdf, cFilePDF )
@@ -316,15 +322,8 @@ METHOD GeraPDF( cFilePDF ) CLASS hbNFeDaNFe
 
 METHOD NovaPagina() CLASS hbNFeDaNFe
 
-   LOCAL nRadiano, nAltura, nAngulo
-
    ::oPdfPage := HPDF_AddPage( ::oPdf )
    HPDF_Page_SetSize( ::oPdfPage, HPDF_PAGE_SIZE_A4, HPDF_PAGE_PORTRAIT )
-   nAltura := HPDF_Page_GetHeight( ::oPdfPage )
-
-   ::nLinhaPdf := nAltura - 8                    // Margem Superior
-   nAngulo     := 45                             // A rotation of 45 degrees
-   nRadiano    := nAngulo / 180 * 3.141592       // Calcurate the radian value
 
    IF ::aIde[ "tpEmis" ] = "5" // Contingencia
       ::DrawContingencia( "", "DANFE EM CONTINGÊNCIA. IMPRESSO EM", "DECORRÊNCIA DE PROBLEMAS TÉCNICOS" )
@@ -337,19 +336,10 @@ METHOD NovaPagina() CLASS hbNFeDaNFe
    IF ::aIde[ "tpAmb" ] == "2"
       ::DrawHomologacao()
    ENDIF
-
    IF ::aInfProt[ "cStat" ] $ "101,135,302" .OR. ! Empty( ::cXmlCancel )
-      HPDF_Page_SetFontAndSize( ::oPdfPage, ::oPDFFontBold, 30 )
-      HPDF_Page_BeginText( ::oPdfPage )
-      HPDF_Page_SetTextMatrix( ::oPdfPage, cos( nRadiano ), sin( nRadiano ), -sin( nRadiano ), cos( nRadiano ), 15, 100)
-      HPDF_Page_SetRGBFill(::oPdfPage, 1, 0, 0)
-      HPDF_Page_ShowText( ::oPdfPage, ::aInfProt[ "xEvento" ] + " " + ::aInfProt[ "dhRegEvento" ] ) // + " " + */ ::aInfProt[ "xMotivo" ] )
-      HPDF_Page_EndText( ::oPdfPage)
-      HPDF_Page_SetRGBStroke( ::oPdfPage, 0.75, 0.75, 0.75 )
-      ::DrawLine( 15, 95, 550, 630, 2.0 )
-      HPDF_Page_SetRGBStroke( ::oPdfPage, 0, 0, 0 ) // reseta cor linhas
-      HPDF_Page_SetRGBFill( ::oPdfPage, 0, 0, 0) // reseta cor fontes
+      ::DrawAviso( ::aInfProt[ "xEvento" ] + " " + ::aInfProt[ "dhRegEvento" ] + " " + ::aInfProt[ "xMotivo" ] )
    ENDIF
+   ::nLinhaPdf := HPDF_Page_GetHeight( ::oPDFPage ) - 8                    // Margem Superior
 
    RETURN NIL
 
@@ -358,22 +348,22 @@ METHOD SaltaPagina() CLASS hbNFeDaNFe
    LOCAL nLinhaFinalProd, nAlturaQuadroProdutos
 
    ::nLinhaPdf -= 2
-   ::TotalServico()
-   ::DadosAdicionais()
+   ::QuadroTotalServico()
+   ::QuadroDadosAdicionais()
    ::Desenvolvedor()
    ::NovaPagina()
    ::nFolha++
    ::nLinhaFolha := 1
-   ::Canhoto()
-   ::CabecalhoRetrato()
-   ::CabecalhoProdutos()
+   ::QuadroCanhoto()
+   ::QuadroNotaFiscal()
+   ::QuadroProdutosTitulo()
    nAlturaQuadroProdutos := ( ::ItensDaFolha() * LAYOUT_FONTSIZE ) + 2
    nLinhaFinalProd       := ::nLinhaPdf - nAlturaQuadroProdutos
-   ::DesenhaBoxProdutos( nLinhaFinalProd, nAlturaQuadroProdutos )
+   ::QuadroProdutosDesenho( nLinhaFinalProd, nAlturaQuadroProdutos )
 
    RETURN NIL
 
-METHOD Canhoto() CLASS hbNFeDaNFe
+METHOD QuadroCanhoto() CLASS hbNFeDaNFe
 
    LOCAL cTexto
 
@@ -411,7 +401,7 @@ METHOD Canhoto() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD CabecalhoRetrato() CLASS hbNFeDaNFe
+METHOD QuadroNotaFiscal() CLASS hbNFeDaNFe
 
    LOCAL cTexto
 
@@ -504,7 +494,7 @@ METHOD CabecalhoRetrato() CLASS hbNFeDaNFe
       ::DrawTexto( 371, ::nLinhaPdf - 71, 589, NIL, "no site da Sefaz Autorizadora", HPDF_TALIGN_CENTER, ::oPDFFontBold, 8 )
    ENDIF
    ::nLinhaPdf -= 80
-   ::DrawBoxTituloTexto( 5, ::nLinhaPdf, 365, 16, "NATUREZA DA OPERAÇÃO", ::aIde[ "natOp" ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
+   ::DrawBoxTituloTexto( 5, ::nLinhaPdf, 365, 16, "NATUREZA DA OPERAÇÃO", Left( ::aIde[ "natOp" ], 50 ), HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
    // PROTOCOLO
    ::DrawBox( 370, ::nLinhaPdf - 16, 220, 16, ::nLarguraBox )
    // ::DrawTexto(371, ::nLinhaPdf - 1, 589, NIL, "PROTOCOLO DE AUTORIZAÇÃO DE USO", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 5 )
@@ -528,7 +518,7 @@ METHOD CabecalhoRetrato() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD Destinatario() CLASS hbNFeDaNFe
+METHOD QuadroDestinatario() CLASS hbNFeDaNFe
 
    ::DrawTexto( 5, ::nLinhaPdf, 589, NIL, "DESTINATÁRIO/REMETENTE", HPDF_TALIGN_LEFT, ::oPDFFontBold, 5 )
    ::nLinhaPdf -= 6
@@ -556,9 +546,17 @@ METHOD Destinatario() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD Duplicatas() CLASS hbNFeDaNFe
+METHOD QuadroLocalColeta() CLASS hbNFeDaNFe
 
-   LOCAL nICob, nItensCob, nLinhaFinalCob, nTamanhoCob
+   RETURN NIL
+
+METHOD QuadroLocalEntrega() CLASS hbNFeDaNFe
+
+   RETURN NIL
+
+METHOD QuadroDuplicatas() CLASS hbNFeDaNFe
+
+   LOCAL nICob, nItensCob, nLinhaFinalCob, nTamanhoCob, aList, cTPag, nPos
    LOCAL nTamForm, aDups, nColuna, cDup, cNumero, cVencimento, cValor, nCont
 
    IF ::nFolha != 1
@@ -566,57 +564,91 @@ METHOD Duplicatas() CLASS hbNFeDaNFe
    ENDIF
    ::DrawTexto( 5, ::nLinhaPdf, 589, NIL, "FATURA/DUPLICATAS", HPDF_TALIGN_LEFT, ::oPDFFontBold, 5 )
    ::nLinhaPdf -= 6
-
-   IF Empty( ::cCobranca )
-      ::DrawBox( 5, ::nLinhaPdf - 12, 585, 12, ::nLarguraBox )
-      IF ::aIde[ "indPag" ] == "0"
-         ::DrawTexto( 6, ::nLinhaPdf - 1,  589, NIL, "PAGAMENTO À VISTA", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
-      ELSEIF ::aIde[ "indPag" ] == "1"
-         ::DrawTexto( 6, ::nLinhaPdf - 1,  589, NIL, "PAGAMENTO À PRAZO", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
-      ELSE
-         ::DrawTexto( 6, ::nLinhaPdf - 1,  589, NIL, "OUTROS", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
-      ENDIF
-      ::nLinhaPdf -= 13
-      RETURN NIL
-   ENDIF
    nICob := Len( MultipleNodeToArray( ::cCobranca, "dup" ) )
-   IF nICob < 1
-      nICob := 1
-   ENDIF
-   nItensCob      := Round( nIcob / 3 + 0.99, 0 )
-   nLinhaFinalCob := ::nLinhaPdf - ( nItensCob * 8 ) - 2
-   nTamanhoCob    := ( nItensCob * 8 ) + 2
-
-   nTamForm := 585
-   FOR nCont = 0 TO 2
-      ::DrawBox( 5 + ( ( ( nTamForm ) / 3 ) * nCont ), nLinhaFinalCob, ( ( nTamForm ) / 3 ), nTamanhoCob, ::nLarguraBox )
-   NEXT
-
-   nTamForm := 585
-   aDups    := MultipleNodeToArray( ::cCobranca, "dup" )
-   nColuna  := 1
-   FOR EACH cDup IN aDups
-      cNumero := XmlNode( cDup, "nDup" )
-      IF Empty( cNumero )
-         EXIT
+   DO CASE
+   CASE nICob > 0
+      nItensCob      := 1 + Int( ( nIcob - 1 ) / 3 )
+      nLinhaFinalCob := ::nLinhaPdf - ( nItensCob * 8 ) - 2
+      nTamanhoCob    := ( nItensCob * 8 ) + 2
+      nTamForm := 585
+      FOR nCont = 0 TO 2
+         ::DrawBox( 5 + ( ( nTamForm / 3 ) * nCont ), nLinhaFinalCob, ( nTamForm / 3 ), nTamanhoCob, ::nLarguraBox )
+      NEXT
+      nTamForm := 585
+      aDups    := MultipleNodeToArray( ::cCobranca, "dup" )
+      nColuna  := 1
+      FOR EACH cDup IN aDups
+         cNumero := XmlNode( cDup, "nDup" )
+         IF Empty( cNumero )
+            EXIT
+         ENDIF
+         cVencimento := XmlNode( cDup, "dVenc" )
+         cVencimento := SubStr( cVencimento, 9, 2 ) + "/" + SubStr( cVencimento, 6, 2 ) + "/" + SubStr( cVencimento, 1, 4 )
+         cValor      := AllTrim( FormatNumber( Val( XmlNode( cDup, "vDup" ) ), 13, 2 ) )
+         IF nColuna > 3
+            ::nLinhaPdf -= 8
+            nColuna := 1
+         ENDIF
+         ::DrawTexto( 6 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1,  80 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cNumero, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
+         ::DrawTexto( 82 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1, 128 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cVencimento, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
+         ::DrawTexto( 130 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1, 195 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cValor, HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 8 )
+         nColuna++
+       NEXT
+      ::nLinhaPdf -= 12
+   CASE Len( ::aDetPag ) > 0
+      aList := { ;
+         { "01", "DINHEIRO" }, ;
+         { "02", "CHEQUE" }, ;
+         { "03", "CARTAO DE CREDITO" }, ;
+         { "04", "CARTAO DE DEBITO" }, ;
+         { "05", "CREDITO LOJA" }, ;
+         { "10", "VALE ALIMENTACAO" }, ;
+         { "11", "VALE REFEICAO" }, ;
+         { "12", "VALE PRESENTE" }, ;
+         { "13", "VALE COMBUSTIVEL" }, ;
+         { "15", "BOLETO BANCARIO" }, ;
+         { "90", "SEM PAGAMENTO" }, ;
+         { "99", "OUTROS" } }
+      nItensCob      := 1 + Int( ( Len( ::aDetPag ) - 1 ) / 3 )
+      nLinhaFinalCob := ::nLinhaPdf - ( nItensCob * 8 ) - 2
+      nTamanhoCob    := ( nItensCob * 8 ) + 2
+      nTamForm       := 585
+      FOR nCont = 0 TO 2
+         ::DrawBox( 5 + ( ( nTamForm / 3 ) * nCont ), nLinhaFinalCob, ( nTamForm / 3 ), nTamanhoCob, ::nLarguraBox )
+      NEXT
+      nTamForm := 585
+      nColuna  := 1
+      FOR EACH cTPag IN ::aDetPag
+         cNumero := XmlNode( cTPag, "tPag" )
+         cValor  := AllTrim( FormatNumber( Val( XmlNode( cTPag, "vPag" ) ), 13, 2 ) )
+         IF nColuna > 3
+            ::nLinhaPdf -= 8
+            nColuna := 1
+         ENDIF
+         IF ( nPos := AScan( aList, { | e | e[ 1 ] == cNumero } ) ) != 0
+           ::DrawTexto( 6 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1, 122 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, aList[ nPos, 2 ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
+         ENDIF
+         ::DrawTexto( 130 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1, 195 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cValor, HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 8 )
+         nColuna++
+      NEXT
+      ::nLinhaPdf -= 12
+   OTHERWISE
+      ::DrawBox( 5, ::nLinhaPdf - 12, 585, 12, ::nLarguraBox )
+      IF ! Empty( ::aIde[ "indPag" ] )
+         IF ::aIde[ "indPag" ] == "0"
+            ::DrawTexto( 6, ::nLinhaPdf - 1,  589, NIL, "PAGAMENTO À VISTA", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
+         ELSEIF ::aIde[ "indPag" ] == "1"
+            ::DrawTexto( 6, ::nLinhaPdf - 1,  589, NIL, "PAGAMENTO À PRAZO", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
+         ELSE
+            ::DrawTexto( 6, ::nLinhaPdf - 1,  589, NIL, "OUTROS", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 10 )
+         ENDIF
       ENDIF
-      cVencimento := XmlNode( cDup, "dVenc" )
-      cVencimento := SubStr( cVencimento, 9, 2 ) + "/" + SubStr( cVencimento, 6, 2 ) + "/" + SubStr( cVencimento, 1, 4 )
-      cValor      := AllTrim( FormatNumber( Val( XmlNode( cDup, "vDup" ) ), 13, 2 ) )
-      ::DrawTexto( 6 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1,  61 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cNumero, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
-      ::DrawTexto( 63 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1, 118 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cVencimento, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
-      ::DrawTexto( 120 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), ::nLinhaPdf - 1, 195 + ( ( ( nTamForm ) / 3 ) * ( nColuna - 1 ) ), NIL, cValor, HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 8 )
-      nColuna++
-      IF nColuna > 3
-         ::nLinhaPdf -= 8
-         nColuna := 1
-      ENDIF
-   NEXT
-   ::nLinhaPdf -= 12
+      ::nLinhaPdf -= 12
+   ENDCASE
 
    RETURN NIL
 
-METHOD DadosImposto() CLASS hbNFeDaNFe
+METHOD QuadroImposto() CLASS hbNFeDaNFe
 
    IF ::nFolha == 1
       ::DrawTexto( 5, ::nLinhaPdf, 589, NIL, "CÁLCULO DO IMPOSTO", HPDF_TALIGN_LEFT, ::oPDFFontBold, 5 )
@@ -638,12 +670,12 @@ METHOD DadosImposto() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD DadosTransporte() CLASS hbNFeDaNFe
+METHOD QuadroTransporte() CLASS hbNFeDaNFe
 
    IF ::nFolha == 1
       ::DrawTexto( 5, ::nLinhaPdf, 589, NIL, "TRANSPORTADOR / VOLUMES TRANSPORTADOS", HPDF_TALIGN_LEFT, ::oPDFFontBold, 5 )
       ::nLinhaPdf -= 6
-      ::DrawBoxTituloTexto( 5, ::nLinhaPdf, 215, 16, "NOME/RAZÃO SOCIAL", ::aTransp[ "xNome" ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
+      ::DrawBoxTituloTexto( 5, ::nLinhaPdf, 215, 16, "NOME/RAZÃO SOCIAL", XmlToString( ::aTransp[ "xNome" ] ), HPDF_TALIGN_LEFT, ::oPDFFontNormal, 8 )
       IF ::aTransp[ "modFrete" ] == "0"
          ::DrawBoxTituloTexto( 220, ::nLinhaPdf, 90, 16, "FRETE POR CONTA", "0-EMITENTE", HPDF_TALIGN_CENTER, ::oPDFFontNormal, 10 )
       ELSEIF ::aTransp[ "modFrete" ] == "1"
@@ -682,13 +714,13 @@ METHOD DadosTransporte() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD CabecalhoProdutos() CLASS hbNFeDaNFe
+METHOD QuadroProdutosTitulo() CLASS hbNFeDaNFe
 
    LOCAL oElement
 
    ::DrawTexto( 5, ::nLinhaPdf, 589, NIL, "DADOS DOS PRODUTOS / SERVIÇOS", HPDF_TALIGN_LEFT, ::oPDFFontBold, 5 )
    ::nLinhaPdf -= LAYOUT_FONTSIZE
-   FOR EACH oELement IN ::aLayout
+   FOR EACH oElement IN ::aLayout
       ::DrawBoxProduto( oElement:__EnumIndex, ::nLinhaPdf - ( LAYOUT_FONTSIZE * 2 + 1 ), ( LAYOUT_FONTSIZE * 2 + 1 ), ::nLarguraBox )
       ::DrawTextoProduto( oElement:__EnumIndex, ::nLinhaPdf - 1,                  LAYOUT_TITULO1, HPDF_TALIGN_CENTER )
       ::DrawTextoProduto( oElement:__EnumIndex, ::nLinhaPdf - LAYOUT_FONTSIZE, LAYOUT_TITULO2, HPDF_TALIGN_CENTER )
@@ -697,7 +729,7 @@ METHOD CabecalhoProdutos() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD DesenhaBoxProdutos( nLinhaFinalProd, nAlturaQuadroProdutos ) CLASS hbNFeDaNFe
+METHOD QuadroProdutosDesenho( nLinhaFinalProd, nAlturaQuadroProdutos ) CLASS hbNFeDaNFe
 
    LOCAL oElement
 
@@ -708,13 +740,13 @@ METHOD DesenhaBoxProdutos( nLinhaFinalProd, nAlturaQuadroProdutos ) CLASS hbNFeD
 
    RETURN NIL
 
-METHOD Produtos() CLASS hbNFeDaNFe
+METHOD QuadroProdutos() CLASS hbNFeDaNFe
 
    LOCAL nLinhaFinalProd, nAlturaQuadroProdutos, nItem, nNumLinha, nCont
 
    nLinhaFinalProd := ::nLinhaPdf - ( ::ItensDaFolha() * LAYOUT_FONTSIZE ) - 2
    nAlturaQuadroProdutos := ( ::ItensDaFolha() * LAYOUT_FONTSIZE ) + 2
-   ::desenhaBoxProdutos( nLinhaFinalProd, nAlturaQuadroProdutos )
+   ::QuadroProdutosDesenho( nLinhaFinalProd, nAlturaQuadroProdutos )
 
    nItem := 1
    ::nLinhaFolha := 1
@@ -795,7 +827,7 @@ METHOD Produtos() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD TotalServico() CLASS hbNFeDaNFe
+METHOD QuadroTotalServico() CLASS hbNFeDaNFe
 
    IF ::nFolha == 1
       IF Val( ::aISSTotal[ "vServ" ] ) > 0
@@ -817,7 +849,7 @@ METHOD TotalServico() CLASS hbNFeDaNFe
 
    RETURN NIL
 
-METHOD DadosAdicionais() CLASS hbNFeDaNFe
+METHOD QuadroDadosAdicionais() CLASS hbNFeDaNFe
 
    LOCAL cMemo, nCont
 
@@ -847,36 +879,39 @@ METHOD DadosAdicionais() CLASS hbNFeDaNFe
 
 METHOD ProcessaItens( cXml, nItem ) CLASS hbNFeDaNFe
 
-   LOCAL cItem
+   LOCAL cItem, aItem
 
-   cItem := XmlNode( cXml, [det nItem="]  + AllTrim( Str( nItem ) ) + ["] )
-   IF Empty( cItem )
+   aItem := MultipleNodeToArray( cXml, "det" )
+   IF Len( aItem ) < nItem
       RETURN .F.
+   ELSE
+      cItem := aItem[ nItem ]
+      ::aItem          := XmlToHash( cItem, { "cProd", "cEAN", "xProd", "NCM", "EXTIPI", "CFOP", "uCom", "qCom", "vUnCom", "vProd", "cEANTrib", "uTrib", "qTrib", "vUnTrib", "vFrete", ;
+         "vSeg", "vDesc", "vOutro", "indTot", "infAdProd" } )
+      ::aItem[ "cEAN" ] := iif( ::aItem[ "cEAN" ] == "SEM GTIN", "", ::aItem[ "cEAN" ] )
+      ::aItem[ "cEANTrib" ] := iif( ::aItem[ "cEANTrib" ] == "SEM GTIN", "", ::aItem[ "cEANTrib" ] )
+      ::aItemDI        := XmlToHash( XmlNode( cItem, "DI" ), { "nDI", "dDI", "xLocDesemb", "UFDesemb", "cExportador" } )
+      ::aItemAdi       := XmlToHash( XmlNode( cItem, "adi" ), { "nAdicao", "nSeqAdic", "cFabricante", "vDescDI", "xPed", "nItemPed" } )
+      // todo veiculos (veicProd), medicamentos (med), armamentos (arm), combustiveis (comb)
+      ::aItemICMS      := XmlToHash( XmlNode( cItem, "ICMS" ), { "orig", "CST", "CSOSN", "vBCSTRet", "vICMSSTRet", "modBC", "pRedBC", "vBC", "pICMS", "vICMS", "motDesICMS", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST" } )
+      ::aItemICMSPart  := XmlToHash( XmlNode( cItem, "ICMSPart" ), { "orig", "CST", "modBC", "pRedBC", "vBC", "pICMS", "vICMS", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST", "pBCOp", "UFST" } )
+      ::aItemICMSST    := XmlToHash( XmlNode( cItem, "ICMSST" ), { "orig", "CST", "vBCSTRet", "vICMSSTRet", "vBCSTDest", "vICMSSTDest" } )
+      ::aItemICMSSN101 := XmlToHash( XmlNode( cItem, "ICMSSN101" ), { "orig", "CSOSN", "pCredSN", "vCredICMSSN" } )
+      ::aItemICMSSN102 := XmlToHash( XmlNode( cItem, "ICMSSN102" ), { "orig", "CSOSN" } )
+      ::aItemICMSSN201 := XmlToHash( XmlNode( cItem, "ICMSSN201" ), { "orig", "CSOSN", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST", "pCredSN", "vCredICMSSN" } )
+      ::aItemICMSSN202 := XmlToHash( XmlNode( cItem, "ICMSSN202" ), { "orig", "CSOSN", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST" } )
+      ::aItemICMSSN500 := XmlToHash( XmlNode( cItem, "ICMSSN500" ), { "orig", "CSOSN", "vBCSTRet", "vICMSSTRet" } )
+      ::aItemICMSSN900 := XmlToHash( XmlNode( cItem, "ICMSSN900" ), { "orig", "CSOSN", "modBC", "pRedBC", "vBC", "pICMS", "vICMS", "modBCST", "pMVAST", "pRedBCST", "vBCST", ;
+         "pICMSST", "vICMSST", "pCredSN", "vCredICMSSN" } )
+      ::aItemIPI       := XmlToHash( XmlNode( cItem, "IPI" ), { "clEnq", "CNPJProd", "cSelo", "qSelo", "cEnq", "CST", "vBC", "pIPI", "qUnid", "vUnid", "vIPI" } )
+      ::aItemII        := XmlToHash( XmlNode( cItem, "II" ), { "vBC", "vDespAdu", "vII", "vIOF" } )
+      ::aItemPIS       := XmlToHash( XmlNode( cItem, "PIS" ), { "CST", "vBC", "pPIS", "vPIS", "qBCProd", "vAliqProd" } )
+      ::aItemPISST     := XmlToHash( XmlNode( cItem, "PISST" ), { "vBC", "pPIS", "vPIS", "qBCProd", "vAliqProd" } )
+      ::aItemCOFINS    := XmlToHash( XmlNode( cItem, "COFINS" ), { "CST", "vBC", "pCOFINS", "vCOFINS", "qBCProd", "vAliqProd" } )
+      ::aItemCOFINSST  := XmlToHash( XmlNode( cItem, "COFINSST" ), { "vBC", "pCOFINS", "vCOFINS", "qBCProd", "vAliqProd" } )
+      ::aItemISSQN     := XmlToHash( XmlNode( cItem, "ISSQN" ), { "vBC", "vAliq", "vISSQN", "cMunFG", "cListServ", "cSitTrib" } )
+      ::aItem[ "infAdProd" ] := StrTran( ::aItem[ "infAdProd" ], ";", Chr( 13 ) + Chr( 10 ) )
    ENDIF
-   ::aItem          := XmlToHash( cItem, { "cProd", "cEAN", "xProd", "NCM", "EXTIPI", "CFOP", "uCom", "qCom", "vUnCom", "vProd", "cEANTrib", "uTrib", "qTrib", "vUnTrib", "vFrete", ;
-                       "vSeg", "vDesc", "vOutro", "indTot", "infAdProd" } )
-   ::aItemDI        := XmlToHash( XmlNode( cItem, "DI" ), { "nDI", "dDI", "xLocDesemb", "UFDesemb", "cExportador" } )
-   ::aItemAdi       := XmlToHash( XmlNode( cItem, "adi" ), { "nAdicao", "nSeqAdic", "cFabricante", "vDescDI", "xPed", "nItemPed" } )
-   // todo veiculos (veicProd), medicamentos (med), armamentos (arm), combustiveis (comb)
-   ::aItemICMS      := XmlToHash( XmlNode( cItem, "ICMS" ), { "orig", "CST", "CSOSN", "vBCSTRet", "vICMSSTRet", "modBC", "pRedBC", "vBC", "pICMS", "vICMS", "motDesICMS", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST" } )
-   ::aItemICMSPart  := XmlToHash( XmlNode( cItem, "ICMSPart" ), { "orig", "CST", "modBC", "pRedBC", "vBC", "pICMS", "vICMS", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST", "pBCOp", "UFST" } )
-   ::aItemICMSST    := XmlToHash( XmlNode( cItem, "ICMSST" ), { "orig", "CST", "vBCSTRet", "vICMSSTRet", "vBCSTDest", "vICMSSTDest" } )
-   ::aItemICMSSN101 := XmlToHash( XmlNode( cItem, "ICMSSN101" ), { "orig", "CSOSN", "pCredSN", "vCredICMSSN" } )
-   ::aItemICMSSN102 := XmlToHash( XmlNode( cItem, "ICMSSN102" ), { "orig", "CSOSN" } )
-   ::aItemICMSSN201 := XmlToHash( XmlNode( cItem, "ICMSSN201" ), { "orig", "CSOSN", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST", "pCredSN", "vCredICMSSN" } )
-   ::aItemICMSSN202 := XmlToHash( XmlNode( cItem, "ICMSSN202" ), { "orig", "CSOSN", "modBCST", "pMVAST", "pRedBCST", "vBCST", "pICMSST", "vICMSST" } )
-   ::aItemICMSSN500 := XmlToHash( XmlNode( cItem, "ICMSSN500" ), { "orig", "CSOSN", "vBCSTRet", "vICMSSTRet" } )
-   ::aItemICMSSN900 := XmlToHash( XmlNode( cItem, "ICMSSN900" ), { "orig", "CSOSN", "modBC", "pRedBC", "vBC", "pICMS", "vICMS", "modBCST", "pMVAST", "pRedBCST", "vBCST", ;
-                       "pICMSST", "vICMSST", "pCredSN", "vCredICMSSN" } )
-   ::aItemIPI       := XmlToHash( XmlNode( cItem, "IPI" ), { "clEnq", "CNPJProd", "cSelo", "qSelo", "cEnq", "CST", "vBC", "pIPI", "qUnid", "vUnid", "vIPI" } )
-   ::aItemII        := XmlToHash( XmlNode( cItem, "II" ), { "vBC", "vDespAdu", "vII", "vIOF" } )
-   ::aItemPIS       := XmlToHash( XmlNode( cItem, "PIS" ), { "CST", "vBC", "pPIS", "vPIS", "qBCProd", "vAliqProd" } )
-   ::aItemPISST     := XmlToHash( XmlNode( cItem, "PISST" ), { "vBC", "pPIS", "vPIS", "qBCProd", "vAliqProd" } )
-   ::aItemCOFINS    := XmlToHash( XmlNode( cItem, "COFINS" ), { "CST", "vBC", "pCOFINS", "vCOFINS", "qBCProd", "vAliqProd" } )
-   ::aItemCOFINSST  := XmlToHash( XmlNode( cItem, "COFINSST" ), { "vBC", "pCOFINS", "vCOFINS", "qBCProd", "vAliqProd" } )
-   ::aItemISSQN     := XmlToHash( XmlNode( cItem, "ISSQN" ), { "vBC", "vAliq", "vISSQN", "cMunFG", "cListServ", "cSitTrib" } )
-
-   ::aItem[ "infAdProd" ] := StrTran( ::aItem[ "infAdProd" ], ";", Chr( 13 ) + Chr( 10 ) )
 
    RETURN .T.
 
@@ -920,15 +955,20 @@ METHOD CalculaLayout() CLASS hbNFeDaNFe
 
 METHOD ItensDaFolha( nFolha ) CLASS hbNFeDaNFe
 
-   LOCAL nQuadro := 630
+   LOCAL nQuadro := 630, nParcelas
 
    nFolha := iif( nFolha == NIL, ::nFolha, nFolha )
 
    IF nFolha == 1
-      nQuadro := 270 + ;
-                iif( ::lLaser, 54, 0  ) + ;
-                iif( Empty( ::cCobranca ), 12, 0 ) + ;
-                iif( Val( ::aIssTotal[ "vServ" ] ) <= 0, 24, 0 )
+      nQuadro := 291 + ;
+         iif( ::lLaser, 54, 0  ) + ;
+         iif( Val( ::aIssTotal[ "vServ" ] ) <= 0, 24, 0 )
+      nParcelas := Len( MultipleNodeToArray( ::cCobranca, "dup" ) )
+      IF nParcelas > 0
+         nQuadro -= ( ( 1 + Int( ( nParcelas - 1 ) / 3 ) ) ) * 8 + 2
+      ELSEIF Len( ::aDetPag ) > 0
+         nQuadro -= ( ( 1 + Int( ( Len( ::aDetPag ) - 1 ) / 3 ) ) ) * 8 + 2
+      ENDIF
    ENDIF
 
    RETURN Int( nQuadro / LAYOUT_FONTSIZE )

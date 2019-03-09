@@ -1,0 +1,12 @@
+test.prg
+sefazclass.hbc
+
+-m
+-n
+-w3
+-es2
+-compr
+-strip
+-jobs=1
+-workdir=c:\temp
+-inc

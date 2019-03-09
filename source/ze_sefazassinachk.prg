@@ -1,7 +1,9 @@
 /*
 ZE_SPEDSSINACHK - Checagem de assinatura
+José Quintas
 */
 
+#include "hb2xhb.ch"
 #define DSIGNS "xmlns:ds='http://www.w3.org/2000/09/xmldsig#'"
 
 FUNCTION ChkSignature( cXml, cCertificadoCN )
@@ -49,7 +51,7 @@ FUNCTION ChkSignature( cXml, cCertificadoCN )
       ENDIF
       cXmlRetorno := "OK"
 
-   ENDSEQUENCE
+   END SEQUENCE
    IF cXmlRetorno == "OK" // pelo temo que demora, melhor não usar
       oCapicomChain:Build( oVerifiedKey:GetVerifyingCertificate )
       cCertificadoCN := oCapicomChain:Certificates[ 1 ]:SubjectName()

@@ -3,7 +3,7 @@ ZE_SPEDDAGERAL - Rotinas comuns de Documento Auxiliar
 Fontes originais do projeto hbnfe em https://github.com/fernandoathayde/hbnfe
 2016.11.15
 
-2017.01.13.1310 - Aceita arquivo como parâmetro
+2017.01.13 - Aceita arquivo como parâmetro
 */
 
 #include "hbzebra.ch"
@@ -31,12 +31,13 @@ CREATE CLASS hbNFeDaGeral
    METHOD FormataIE( cText )                                                        INLINE hbNFe_FormataIE( cText )
    METHOD Desenvolvedor( nLinhaPDF )
    METHOD DrawBoxTituloTexto( x, y, w, h, cTitle, cText, nAlign, oPDFFont, nFontSize, nAngle )
+   METHOD DrawAviso( cTexto )
    METHOD DrawHomologacao()
    METHOD DrawContingencia( cTexto1, cTexto2, cTexto3 )
 #ifdef __XHARBOUR__
    METHOD xHarbourCode128c( pcCodigoBarra )                                         INLINE hbNFe_Codifica_Code128c( pcCodigoBarra )
-#else
 #endif
+
    ENDCLASS
 
 METHOD DrawJPEGImage( cJPEGImage, x1, y1, x2, y2 ) CLASS hbNFeDaGeral
@@ -158,15 +159,17 @@ METHOD ToPDF( cXmlDocumento, cFilePDF, cXmlAuxiliar ) CLASS hbNFeDaGeral
       cXmlAuxiliar := MemoRead( cXmlAuxiliar )
    ENDIF
    DO CASE
-   CASE "<infCte "    $ cXmlDocumento                                                                                                ; oDanfe := hbNFeDaCte():New()
+   CASE "<infMDFe "   $ cXmlDocumento .AND. "<MDFe " $ cXmlDocumento                                                                 ; oDanfe := hbNFeDaMDFe():New()
+   CASE "<infCte "    $ cXmlDocumento .AND. "<CTe "  $ cXmlDocumento                                                                 ; oDanfe := hbNFeDaCte():New()
    CASE "<infNFe "    $ cXmlDocumento .AND. "<NFe "  $ cXmlDocumento .AND. XmlNode( XmlNode( cXmlDocumento, "ide" ), "mod" ) == "55" ; oDanfe := hbNFeDaNFe():New()
    CASE "<infNFe "    $ cXmlDocumento .AND. "<NFe "  $ cXmlDocumento .AND. XmlNode( XmlNode( cXmlDocumento, "ide" ), "mod" ) == "65" ; oDanfe := hbNFeDaNFCe():New()
-   CASE "<infMDFe "   $ cXmlDocumento .AND. "<MDFe " $ cXmlDocumento                                                                 ; oDanfe := hbNFeDaMDFe():New()
+   CASE "<infNFe "    $ cXmlDocumento .AND. "<NFe>"  $ cXmlDocumento .AND. XmlNode( XmlNode( cXmlDocumento, "ide" ), "mod" ) == "55" ; oDanfe := hbNFeDaNFe():New()
+   CASE "<infNFe "    $ cXmlDocumento .AND. "<NFe>"  $ cXmlDocumento .AND. XmlNode( XmlNode( cXmlDocumento, "ide" ), "mod" ) == "65" ; oDanfe := hbNFeDaNFCe():New()
    CASE "<infEvento " $ cXmlDocumento                                                                                                ; oDanfe := hbNFeDaEvento():New()
    OTHERWISE
       RETURN "XML inválido"
    ENDCASE
-   oDanfe:cLogoFile := ::cLogoFile
+   oDanfe:cLogoFile      := ::cLogoFile
    oDanfe:cDesenvolvedor := ::cDesenvolvedor
 
    RETURN oDanfe:ToPDF( cXmlDocumento, cFilePDF, cXmlAuxiliar )
@@ -219,6 +222,27 @@ METHOD DrawContingencia( cTexto1, cTexto2, cTexto3 ) CLASS hbNFeDaGeral
    HPDF_Page_SetRGBFill( ::oPdfPage, 0, 0, 0 ) // reseta cor fontes
 
    RETURN NIL
+
+METHOD DrawAviso( cTexto ) CLASS hbNFeDaGeral
+
+   LOCAL nRadiano, nAngulo
+
+   nAngulo     := 45                             // A rotation of 45 degrees
+   nRadiano    := nAngulo / 180 * 3.141592       // Calcurate the radian value
+
+   HPDF_Page_SetFontAndSize( ::oPdfPage, ::oPDFFontBold, 30 )
+   HPDF_Page_BeginText( ::oPdfPage )
+   HPDF_Page_SetTextMatrix( ::oPdfPage, Cos( nRadiano ), Sin( nRadiano ), -Sin( nRadiano ), Cos( nRadiano ), 15, 100)
+   HPDF_Page_SetRGBFill(::oPdfPage, 1, 0, 0)
+   HPDF_Page_ShowText( ::oPdfPage, iif( Empty( cTexto ), "FALTOU TEXTO", cTexto ) )
+   HPDF_Page_EndText( ::oPdfPage )
+   HPDF_Page_SetRGBStroke( ::oPdfPage, 0.75, 0.75, 0.75 )
+   //::DrawLine( 15, 95, 550, 630, 2.0 )
+   HPDF_Page_SetRGBStroke( ::oPdfPage, 0, 0, 0 ) // reseta cor linhas
+   HPDF_Page_SetRGBFill( ::oPdfPage, 0, 0, 0) // reseta cor fontes
+
+   RETURN NIL
+
 
 STATIC FUNCTION hbNFe_Texto_Hpdf( oPage, x1, y1, x2, y2, cText, align, oFontePDF, nTamFonte, nAngulo )
 
@@ -295,6 +319,7 @@ STATIC FUNCTION hbNFe_FormataIE( cIE, cUF )
    RETURN cIE
 
 #ifdef __XHARBOUR__
+
 STATIC FUNCTION hbnfe_Codifica_Code128c( pcCodigoBarra )
 
    // Parameters de entrada : O codigo de barras no formato Code128C "somente numeros" campo tipo caracter
@@ -306,7 +331,7 @@ STATIC FUNCTION hbnfe_Codifica_Code128c( pcCodigoBarra )
 
    LOCAL nI := 0, checksum := 0, nValorCar, cCode128 := '', cCodigoBarra
 
-   cCodigoBarra == pcCodigoBarra
+   cCodigoBarra := pcCodigoBarra
    IF Len( cCodigoBarra ) > 0    // Verifica se os caracteres são válidos (somente números)
       IF Int( Len( cCodigoBarra ) / 2 ) == Len( cCodigoBarra ) / 2    // Tem ser par o tamanho do código de barras
          FOR nI = 1 TO Len( cCodigoBarra )

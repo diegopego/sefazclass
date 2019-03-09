@@ -1,22 +1,29 @@
 /*
 Fontes originais do projeto hbnfe em https://github.com/fernandoathayde/hbnfe
 Contribuição NFCE: LucianoConforto
+
+2018.03.06 Aumento do campo quantidade 7,3
 */
 
 #include "hbclass.ch"
 #include "harupdf.ch"
+#include "sefazclass.ch"
 
-#define WS_AMBIENTE_HOMOLOGACAO      "2"
-#define WS_AMBIENTE_PRODUCAO         "1"
+#ifdef __XHARBOUR__
+#define ALL_PARAMETERS a, b, c, d, e, f, g
+#else
+#define ALL_PARAMETERS ...
+#endif
 
 CREATE CLASS hbNFeDaNFCe INHERIT hbNFeDaGeral
 
-   METHOD ToPDF( cXmlNFCe, cFilePDF, ... )
+   METHOD ToPDF( cXmlNFCe, cFilePDF )
    METHOD BuscaDadosXML()
-   METHOD Execute( cXmlNFCe, cFilePDF, ... ) INLINE ::ToPDF( cXmlNFce, cFilePDF, ... )
+   METHOD Execute( cXmlNFCe, cFilePDF, ALL_PARAMETERS ) INLINE ::ToPDF( cXmlNFce, cFilePDF, ALL_PARAMETERS )
    METHOD CalculaPDF()
    METHOD GeraPDF( cFilePDF )
    METHOD NovaPagina()
+   METHOD Desenvolvedor()
 
    METHOD Cabecalho()                     // DIVISAO I    - Informacoes do Cabecalho
    METHOD DetalheProdutosServicos()       // DIVISAO II   - Informacoes de detalhes de produtos/servicos
@@ -27,6 +34,9 @@ CREATE CLASS hbNFeDaNFCe INHERIT hbNFeDaGeral
    METHOD IdentificacaoNFCeProtocolo()    // DIVISAO VII  - Informacoes de Identificacao da NFC-e e do Protocolo de Autorizacao
    METHOD AreaMensagemFiscal()            // DIVISAO VIII - Area de Mensagem Fiscal
    METHOD MensagemInteresseContribuinte() // DIVISAO IX   - Mensagem de Interesse do Contribuinte
+   METHOD MsgHomologacao()                // Mensagem ref emitida em homologacao
+   METHOD MsgContingencia()               // Mensagem ref emitida em contingencia
+   METHOD FormatMemoAsArray( cText, nLarguraCol )
 
    VAR aIde
    VAR aEmit
@@ -35,7 +45,7 @@ CREATE CLASS hbNFeDaNFCe INHERIT hbNFeDaGeral
    VAR nItem              INIT 0
    VAR aICMSTotal
    VAR aFPags             INIT {}
-   VAR cChaveAcesso
+   VAR cChave
    VAR cQRCode
    VAR aInfProt
    VAR aInfAdic
@@ -51,10 +61,9 @@ CREATE CLASS hbNFeDaNFCe INHERIT hbNFeDaGeral
    VAR cXml
    VAR cRetorno
 
-   END CLASS
+   ENDCLASS
 
-
-METHOD ToPDF( cXmlNFCe, cFilePDF, ... ) CLASS hbNFeDaNFCe
+METHOD ToPDF( cXmlNFCe, cFilePDF ) CLASS hbNFeDaNFCe
 
    ::cXml     := cXmlNFCe
    ::cRetorno := "OK"
@@ -81,18 +90,17 @@ METHOD ToPDF( cXmlNFCe, cFilePDF, ... ) CLASS hbNFeDaNFCe
 
    RETURN ::cRetorno
 
-
 METHOD BuscaDadosXML() CLASS hbNFeDaNFCe
 
    LOCAL aFPagsList, cItem, aItem, aFPags, cFPags, cTipoPgto, cDescPgto, cValorPgto, nPosX
 
-   ::aIde         := XmlToHash( XmlNode( ::cXml, "ide" ), { "tpAmb", "cUF", "serie", "nNF", "dhEmi" } )
+   ::aIde         := XmlToHash( XmlNode( ::cXml, "ide" ), { "tpAmb", "cUF", "serie", "nNF", "dhEmi", "tpEmis" } )
    ::aEmit        := XmlToHash( XmlNode( ::cXml, "emit" ), { "CNPJ", "CPF", "IE", "xNome", "xLgr", "nro", "xBairro", "xMun", "UF" } )
    ::aDest        := XmlToHash( XmlNode( ::cXml, "dest" ), { "CNPJ", "CPF", "xNome", "xLgr", "nro", "xBairro", "xMun", "UF" } )
    ::aICMSTotal   := XmlToHash( XmlNode( ::cXml, "ICMSTot" ), { "vProd", "vFrete", "vSeg", "vOutro", "vDesc", "vNF", "vTotTrib" } )
    ::aInfProt     := XmlToHash( XmlNode( ::cXml, "infProt" ), { "nProt", "dhRecbto" } )
    ::aInfAdic     := XmlToHash( XmlNode( ::cXml, "infAdic" ), { "infAdFisco", "infCpl" } )
-   ::cChaveAcesso := AllTrim( Substr( XmlElement( ::cXml, "Id" ), 4 ) )
+   ::cChave       := AllTrim( Substr( XmlElement( ::cXml, "Id" ), 4 ) )
    ::cQRCode      := XmlToString( XmlNode( XmlNode( ::cXml, "infNFeSupl" ), "qrCode" ) )
 
    // Produtos / Servicos
@@ -107,16 +115,17 @@ METHOD BuscaDadosXML() CLASS hbNFeDaNFCe
    ENDDO
 
    // Formas de Pagamento
-   aFPagsList := { { "01", "Dinheiro" }, ;
-                   { "02", "Cheque" }, ;
-                   { "03", "Cartao de Credito" }, ;
-                   { "04", "Cartao de Debito" }, ;
-                   { "05", "Credito Loja" }, ;
-                   { "10", "Vale Alimentacao" }, ;
-                   { "11", "Vale Refeicao" }, ;
-                   { "12", "Vale Presente" }, ;
-                   { "13", "Vale Combustivel" }, ;
-                   { "99", "Outros" } }
+   aFPagsList := { ;
+      { "01", "Dinheiro" }, ;
+      { "02", "Cheque" }, ;
+      { "03", "Cartao de Credito" }, ;
+      { "04", "Cartao de Debito" }, ;
+      { "05", "Credito Loja" }, ;
+      { "10", "Vale Alimentacao" }, ;
+      { "11", "Vale Refeicao" }, ;
+      { "12", "Vale Presente" }, ;
+      { "13", "Vale Combustivel" }, ;
+      { "99", "Outros" } }
 
    aFPags := MultipleNodeToArray( ::cXml, "pag" )
 
@@ -136,15 +145,14 @@ METHOD BuscaDadosXML() CLASS hbNFeDaNFCe
 
    RETURN .T.
 
-
 METHOD CalculaPDF() CLASS hbNFeDaNFCe
 
    LOCAL oPDFPageAltura
 
-   // Funcao utilizada para calcular a altura maxima utilizada na impressao da NFCe
-   // devido ao fato da nota consumidor se utilizar basicamente de impressoras termicas
-   // de papel continuo, nao sendo recomendavel salto de pagina pois acarreta espacos
-   // em branco entre as paginas.
+   // Funcao para calcular a altura maxima utilizada na impressao da NFCe devido ao
+   // fato da nota consumidor se utilizar basicamente de impressoras termicas de papel
+   // continuo, nao sendo recomendavel salto de pagina pois acarreta espacos em branco
+   // entre as paginas.
 
    ::oPDF := HPDF_New()
 
@@ -168,6 +176,7 @@ METHOD CalculaPDF() CLASS hbNFeDaNFCe
    ::AreaMensagemFiscal()
    ::ConsultaChaveQRCode()
    ::MensagemInteresseContribuinte()
+   ::Desenvolvedor()
 
    oPDFPageAltura   := ::oPDFPageAltura
    ::oPDFPageAltura := ( oPDFPageAltura - ( ::nLinhaPDF - 10 ) )
@@ -175,7 +184,6 @@ METHOD CalculaPDF() CLASS hbNFeDaNFCe
    HPDF_Free( ::oPDF )
 
    RETURN .T.
-
 
 METHOD GeraPDF( cFilePDF ) CLASS hbNFeDaNFCe
 
@@ -201,12 +209,12 @@ METHOD GeraPDF( cFilePDF ) CLASS hbNFeDaNFCe
    ::AreaMensagemFiscal()
    ::ConsultaChaveQRCode()
    ::MensagemInteresseContribuinte()
+   ::Desenvolvedor()
 
    HPDF_SaveToFile( ::oPDF, cFilePDF )
    HPDF_Free( ::oPDF )
 
    RETURN .T.
-
 
 METHOD NovaPagina() CLASS hbNFeDaNFCe
 
@@ -222,10 +230,9 @@ METHOD NovaPagina() CLASS hbNFeDaNFCe
 
    RETURN NIL
 
-
 METHOD Cabecalho() CLASS hbNFeDaNFCe
 
-   LOCAL nPosIni, nTamMax, nLinha, cLinha
+   LOCAL nPosIni, nTamMax, oElement
 
    // DIVISAO I - Informacoes do Cabecalho---------------------------------------------------------------------------------------
    IF ::cLogoFile == NIL .OR. Empty( ::cLogoFile )
@@ -237,53 +244,37 @@ METHOD Cabecalho() CLASS hbNFeDaNFCe
       nTamMax := 45
    ENDIF
 
-   nLinha := 1
-   DO WHILE .T.
-      cLinha := Trim( MemoLine( ::aEmit[ "xNome" ], nTamMax, nLinha ) )
-      IF Empty( cLinha )
-         EXIT
-      ENDIF
-      ::DrawTexto( nPosIni, ::nLinhaPDF, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontBold, 7 )
+   FOR EACH oElement IN ::FormatMemoAsArray( ::aEmit[ "xNome" ], nTamMax )
+      ::DrawTexto( nPosIni, ::nLinhaPDF, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontBold, 7 )
       ::nLinhaPDF -= 10
-      nLinha++
-   ENDDO
-
-   ::DrawTexto( nPosIni, ::nLinhaPDF, 220, NIL, "CNPJ: " + Transform( ::aEmit[ "CNPJ" ], "@R 99.999.999/9999-99" ) + " - IE: " + ::aEmit[ "IE" ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-   ::nLinhaPDF -= 10
-
-   nLinha := 1
-   DO WHILE .T.
-      cLinha := Trim( MemoLine( ::aEmit[ "xLgr" ] + ", " + ::aEmit[ "nro" ] + ", " + ::aEmit[ "xBairro" ] + ", " + ::aEmit[ "xMun" ] + ", " + ::aEmit[ "UF" ], nTamMax, nLinha ) )
-      IF Empty( cLinha )
-         EXIT
-      ENDIF
-      ::DrawTexto( nPosIni, ::nLinhaPDF, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+   NEXT
+   FOR EACH oElement IN ::FormatMemoAsArray( "CNPJ: " + Transform( ::aEmit[ "CNPJ" ], "@R 99.999.999/9999-99" ) + " - IE: " + ::aEmit[ "IE" ], nTamMax )
+      ::DrawTexto( nPosIni, ::nLinhaPDF, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
       ::nLinhaPDF -= 10
-      nLinha++
-   ENDDO
+   NEXT
+   FOR EACH oElement IN ::FormatMemoAsArray( ::aEmit[ "xLgr" ] + ", " + ::aEmit[ "nro" ] + ", " + ::aEmit[ "xBairro" ] + ", " + ::aEmit[ "xMun" ] + ", " + ::aEmit[ "UF" ], nTamMax )
+      ::DrawTexto( nPosIni, ::nLinhaPDF, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+      ::nLinhaPDF -= 10
+   NEXT
 
    ::DrawTexto( 6, ::nLinhaPDF     , 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
    ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, "DANFE NFC-e - Documento Auxiliar" , HPDF_TALIGN_CENTER, ::oPDFFontBold, 8 )
    ::DrawTexto( 6, ::nLinhaPDF - 20, 220, NIL, "da Nota Fiscal de Consumidor Eletronica" , HPDF_TALIGN_CENTER, ::oPDFFontBold, 8 )
    ::DrawTexto( 6, ::nLinhaPDF - 30, 220, NIL, "Nao permite aproveitamento de credito do ICMS" , HPDF_TALIGN_CENTER, ::oPDFFontNormal, 7 )
-   ::nLinhaPDF -= 30
+   ::nLinhaPDF -= 34
 
-   IF ::aIde[ "tpAmb" ] == WS_AMBIENTE_HOMOLOGACAO
-      ::DrawTexto( 6, ::nLinhaPDF -  5, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
-      ::DrawTexto( 6, ::nLinhaPDF - 15, 220, NIL, "EMITIDA EM AMBIENTE DE HOMOLOGACAO", HPDF_TALIGN_CENTER, ::oPDFFontBold, 9 )
-      ::DrawTexto( 6, ::nLinhaPDF - 25, 220, NIL, "SEM VALOR FISCAL", HPDF_TALIGN_CENTER, ::oPDFFontBold, 9 )
-      ::nLinhaPDF -= 25
-   ENDIF
+   ::MsgHomologacao()
 
    ::DrawTexto( 6, ::nLinhaPDF - 5, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
    ::nLinhaPDF -= 5
 
-   RETURN NIL
+   ::MsgContingencia()
 
+   RETURN NIL
 
 METHOD DetalheProdutosServicos() CLASS hbNFeDaNFCe
 
-   LOCAL nContX, nLinha, cLinha
+   LOCAL nContX, nCont, cTexto
 
    // DIVISAO II - Informacoes de detalhes de produtos/servicos------------------------------------------------------------------
    ::DrawTexto(   6, ::nLinhaPDF - 10, 220, NIL, "CODIGO", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
@@ -297,20 +288,16 @@ METHOD DetalheProdutosServicos() CLASS hbNFeDaNFCe
 
    // "cProd", "xProd", "qCom", "uCom", "vUnCom", "vProd"
    FOR nContX := 1 TO Len( ::aItem )
-      ::DrawTexto(  6, ::nLinhaPDF - 10, 220, NIL, ::aItem[ nContX, 1 ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-
-      nLinha := 1
-      DO WHILE .T.
-         cLinha := Trim( MemoLine( ::aItem[ nContX, 2 ], 45, nLinha ) )
-         IF Empty( cLinha )
-            EXIT
-         ENDIF
-         ::DrawTexto( 40, ::nLinhaPDF - 10, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+      //::DrawTexto(  6, ::nLinhaPDF - 10, 220, NIL, ::aItem[ nContX, 1 ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+      //FOR EACH oElement IN ::FormatMemoAsArray( ::aItem[ nContx, 2 ], 45 )
+      HPDF_Page_SetFontAndSize( ::oPDFPage, ::oPDFFontNormal, 7 )
+      cTexto := ::FormataMemo( ::aItem[ nContX, 1 ] + "  " + ::aItem[ nContx, 2 ], 200 )
+      FOR nCont = 1 TO MLCount( cTexto, 1000 )
+         ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, MemoLine( cTexto, 1000, nCont ), HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
          ::nLinhaPDF -= 10
-         nLinha++
-      ENDDO
+      NEXT
 
-      ::DrawTexto(  6, ::nLinhaPDF - 10,  44, NIL, FormatNumber( Val( ::aItem[ nContX, 3 ] ), 6, 3 ), HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 7 )
+      ::DrawTexto(  6, ::nLinhaPDF - 10,  44, NIL, FormatNumber( Val( ::aItem[ nContX, 3 ] ), 7, 3 ), HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 7 )
       ::DrawTexto( 50, ::nLinhaPDF - 10, 220, NIL, ::aItem[ nContX, 4 ], HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
       ::DrawTexto(  6, ::nLinhaPDF - 10, 146, NIL, FormatNumber( Val( ::aItem[ nContX, 5 ] ), 15, 4 ), HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 7 )
       ::DrawTexto(  6, ::nLinhaPDF - 10, 220, NIL, FormatNumber( Val( ::aItem[ nContX, 6 ] ), 15, 2 ), HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 7 )
@@ -321,7 +308,6 @@ METHOD DetalheProdutosServicos() CLASS hbNFeDaNFCe
    ::nLinhaPDF -= 5
 
    RETURN NIL
-
 
 METHOD TotaisDanfeNFCe() CLASS hbNFeDaNFCe
 
@@ -336,7 +322,7 @@ METHOD TotaisDanfeNFCe() CLASS hbNFeDaNFCe
    ::DrawTexto( 6, ::nLinhaPDF - 20, 220, NIL, FormatNumber( Val( ::aICMSTotal[ "vProd" ] ), 15, 2 ), HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 7 )
    ::nLinhaPDF -= 20
 
-   IF !Empty( nValorAcrescimoDesconto )
+   IF ! Empty( nValorAcrescimoDesconto )
       IF Round( nValorAcrescimoDesconto, 2 ) > 0
          ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, "Acrescimos", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
          ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, FormatNumber( nValorAcrescimoDesconto, 15, 2 ), HPDF_TALIGN_RIGHT, ::oPDFFontNormal, 7 )
@@ -368,7 +354,6 @@ METHOD TotaisDanfeNFCe() CLASS hbNFeDaNFCe
    ::nLinhaPDF -= 30
 
    RETURN NIL
-
 
 METHOD ConsultaChaveAcesso() CLASS hbNFeDaNFCe
 
@@ -453,12 +438,11 @@ METHOD ConsultaChaveAcesso() CLASS hbNFeDaNFCe
    ENDIF
 
    ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, "CHAVE DE ACESSO", HPDF_TALIGN_CENTER, ::oPDFFontBold, 8 )
-   ::DrawTexto( 6, ::nLinhaPDF - 20, 220, NIL, Transform( ::cChaveAcesso, "@R 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999" ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+   ::DrawTexto( 6, ::nLinhaPDF - 20, 220, NIL, Transform( ::cChave, "@R 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999" ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
    ::DrawTexto( 6, ::nLinhaPDF - 25, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
    ::nLinhaPDF -= 25
 
    RETURN NIL
-
 
 METHOD ConsultaChaveQRCode() CLASS hbNFeDaNFCe
 
@@ -474,18 +458,17 @@ METHOD ConsultaChaveQRCode() CLASS hbNFeDaNFCe
 
    RETURN NIL
 
-
 METHOD Consumidor() CLASS hbNFeDaNFCe
 
-   LOCAL nLinha, cLinha
+//   LOCAL oElement
 
    // DIVISAO VI - Informacoes sobre o Consumidor--------------------------------------------------------------------------------
    ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, "CONSUMIDOR", HPDF_TALIGN_CENTER, ::oPDFFontBold, 8 )
 
-   IF !Empty( ::aDest[ "CNPJ" ] )
+   IF ! Empty( ::aDest[ "CNPJ" ] )
       ::DrawTexto(  6, ::nLinhaPDF - 20, 220, NIL, "CNPJ: ", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
       ::DrawTexto( 37, ::nLinhaPDF - 20, 220, NIL, Transform( ::aDest[ "CNPJ" ], "@R 99.999.999/9999-99" ), HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-   ELSEIF !Empty( ::aDest[ "CPF" ] )
+   ELSEIF ! Empty( ::aDest[ "CPF" ] )
       ::DrawTexto(  6, ::nLinhaPDF - 20, 220, NIL, "CPF: ", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
       ::DrawTexto( 37, ::nLinhaPDF - 20, 220, NIL, Transform( ::aDest[ "CPF" ], "@R 999.999.999-99" ), HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
    ELSE
@@ -493,38 +476,25 @@ METHOD Consumidor() CLASS hbNFeDaNFCe
    ENDIF
    ::nLinhaPDF -= 20
 
-   IF !Empty( ::aDest[ "CNPJ" ] ) .OR. !Empty( ::aDest[ "CPF" ] )
-
-      ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, "Nome: ", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-      nLinha := 1
-      DO WHILE .T.
-         cLinha := Trim( MemoLine( ::aDest[ "xNome" ], 44, nLinha ) )
-         IF Empty( cLinha )
-            EXIT
-         ENDIF
-         ::DrawTexto( 37, ::nLinhaPDF - 10, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-         ::nLinhaPDF -= 10
-         nLinha++
-      ENDDO
-
-      ::DrawTexto(  6, ::nLinhaPDF - 10, 220, NIL, "Endereco: ", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-      nLinha := 1
-      DO WHILE .T.
-         cLinha := Trim( MemoLine( ::aDest[ "xLgr" ] + ", " + ::aDest[ "nro" ] + ", " + ::aDest[ "xBairro" ] + ", " + ::aDest[ "xMun" ] + ", " + ::aDest[ "UF" ], 44, nLinha ) )
-         IF Empty( cLinha )
-            EXIT
-         ENDIF
-         ::DrawTexto( 37, ::nLinhaPDF - 10, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
-         ::nLinhaPDF -= 10
-         nLinha++
-      ENDDO
-   ENDIF
+//   IF ! Empty( ::aDest[ "CNPJ" ] ) .OR. ! Empty( ::aDest[ "CPF" ] )
+//
+//      ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, "Nome: ", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+//      FOR EACH oElement IN ::FormatMemoAsArray( ::aDest[ "xNome" ], 44 )
+//         ::DrawTexto( 37, ::nLinhaPDF - 10, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+//         ::nLinhaPDF -= 10
+//      NEXT
+//
+//      ::DrawTexto(  6, ::nLinhaPDF - 10, 220, NIL, "Endereco: ", HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+//      FOR EACH oElement IN ::FormatMemoAsArray( ::aDest[ "xLgr" ] + ", " + ::aDest[ "nro" ] + ", " + ::aDest[ "xBairro" ] + ", " + ::aDest[ "xMun" ] + ", " + ::aDest[ "UF" ], 44 )
+//         ::DrawTexto( 37, ::nLinhaPDF - 10, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+//         ::nLinhaPDF -= 10
+//      NEXT
+//   ENDIF
 
    ::DrawTexto( 6, ::nLinhaPDF - 5, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
    ::nLinhaPDF -= 5
 
    RETURN NIL
-
 
 METHOD IdentificacaoNFCeProtocolo() CLASS hbNFeDaNFCe
 
@@ -538,14 +508,14 @@ METHOD IdentificacaoNFCeProtocolo() CLASS hbNFeDaNFCe
 
    RETURN NIL
 
-
 METHOD AreaMensagemFiscal() CLASS hbNFeDaNFCe
 
-   LOCAL aInfAdFisco, nContX, nLinha, cLinha
+   LOCAL aInfAdFisco, nContX, cText, oElement
 
    // DIVISAO VIII - Area de Mensagem Fiscal-------------------------------------------------------------------------------------
-   ::aInfAdic[ "infAdFisco" ] := StrTran( ::aInfAdic[ "infAdFisco" ], ";;", "|" )
-   ::aInfAdic[ "infAdFisco" ] := StrTran( ::aInfAdic[ "infAdFisco" ], "|", hb_eol() )
+   FOR EACH cText IN { ";;", ";", "|" }
+      ::aInfAdic[ "infAdFisco" ] := StrTran( ::aInfAdic[ "infAdFisco" ], cText, hb_Eol() )
+   NEXT
 
    aInfAdFisco := hb_ATokens( ::aInfAdic[ "infAdFisco" ], hb_eol() )
 
@@ -556,53 +526,90 @@ METHOD AreaMensagemFiscal() CLASS hbNFeDaNFCe
       ::nLinhaPDF -= 25
    ENDIF
 
+   ::MsgContingencia()
+
    FOR nContX := 1 TO Len( aInfAdFisco )
-      nLinha := 1
-      DO WHILE .T.
-         cLinha := Trim( MemoLine( aInfAdFisco[ nContX ], 55, nLinha ) )
-         IF Empty( cLinha )
-            EXIT
-         ENDIF
-         ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+      FOR EACH oElement IN ::FormatMemoAsArray( aInfAdFisco[ nContX ], 55 )
+         ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
          ::nLinhaPDF -= 10
-         nLinha++
-      ENDDO
+      NEXT
    NEXT
 
-   IF !Empty( ::aInfAdic[ "infAdFisco" ] )
+   IF ! Empty( ::aInfAdic[ "infAdFisco" ] )
       ::DrawTexto( 6, ::nLinhaPDF - 5, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
       ::nLinhaPDF -= 5
    ENDIF
 
    RETURN NIL
 
-
 METHOD MensagemInteresseContribuinte() CLASS hbNFeDaNFCe
 
-   LOCAL aInfCpl, nContX, nLinha, cLinha
+   LOCAL aInfCpl, nContX, oElement, cText
 
    // DIVISAO IX - Mensagem de Interesse do Contribuinte-------------------------------------------------------------------------
-   ::aInfAdic[ "infCpl" ] := StrTran( ::aInfAdic[ "infCpl" ], ";;", "|" )
-   ::aInfAdic[ "infCpl" ] := StrTran( ::aInfAdic[ "infCpl" ], "|", hb_eol() )
+   FOR EACH cText IN { ";;", ";", "|" }
+      ::aInfAdic[ "infCpl" ] := StrTran( ::aInfAdic[ "infCpl" ], cText, hb_Eol() )
+   NEXT
 
    aInfCpl := hb_ATokens( ::aInfAdic[ "infCpl" ], hb_eol() )
 
    FOR nContX := 1 TO Len( aInfCpl )
-      nLinha := 1
-      DO WHILE .T.
-         cLinha := Trim( MemoLine( aInfCpl[ nContX ], 55, nLinha ) )
-         IF Empty( cLinha )
-            EXIT
-         ENDIF
-         ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, cLinha, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
+      FOR EACH oElement IN ::FormatMemoAsArray( aInfCpl[ nContX ], 55 )
+         ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, oElement, HPDF_TALIGN_LEFT, ::oPDFFontNormal, 7 )
          ::nLinhaPDF -= 10
-         nLinha++
-      ENDDO
+      NEXT
    NEXT
 
-   IF !Empty( ::aInfAdic[ "infCpl" ] )
+   IF ! Empty( ::aInfAdic[ "infCpl" ] )
       ::DrawTexto( 6, ::nLinhaPDF - 5, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
       ::nLinhaPDF -= 5
+   ENDIF
+
+   RETURN NIL
+
+METHOD Desenvolvedor() CLASS hbNFeDaNFCe
+
+   IF ! Empty( ::cDesenvolvedor )
+      ::DrawTexto( 6, ::nLinhaPDF - 10, 220, NIL, ::cDesenvolvedor, HPDF_TALIGN_RIGHT, ::oPDFFontBold, 6 )
+      ::nLinhaPDF -= 10
+   ENDIF
+
+   RETURN NIL
+
+METHOD FormatMemoAsArray( cText, nLarguraCol ) CLASS hbNFeDaNFCe
+
+   LOCAL aText := {}, nCont, cLinha
+
+   HPDF_Page_SetFontAndSize( ::oPdfPage, ::oPDFFontBold, 7 )
+   cText := ::FormataMemo( cText, Int( 220 / 60 * nLarguraCol ) )
+   FOR nCont = 1 TO 100
+      cLinha := MemoLine( cText, 100, nCont )
+      IF Empty( cLinha )
+         EXIT
+      ENDIF
+      AAdd( aText, cLinha )
+   NEXT
+
+   RETURN aText
+
+METHOD MsgContingencia() CLASS hbNFeDaNFCe
+
+   IF ::aIde[ "tpEmis" ] == "9"
+      ::DrawTexto( 6, ::nLinhaPDF -  5, 220, NIL, "EMITIDA EM CONTINGÊNCIA", HPDF_TALIGN_CENTER, ::oPDFFontBold, 9 )
+      ::DrawTexto( 6, ::nLinhaPDF - 15, 220, NIL, "PENDENTE DE AUTORIZAÇÃO", HPDF_TALIGN_CENTER, ::oPDFFontBold, 7 )
+      ::DrawTexto( 6, ::nLinhaPDF - 20, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+      ::nLinhaPDF -= 25
+   ENDIF
+
+   RETURN NIL
+
+METHOD MsgHomologacao() CLASS hbNFeDaNFCe
+
+   IF ::aIde[ "tpAmb" ] == WS_AMBIENTE_HOMOLOGACAO
+      ::DrawTexto( 6, ::nLinhaPDF -  5, 220, NIL, Replicate( "-", 80 ), HPDF_TALIGN_CENTER, ::oPDFFontNormal, 8 )
+      ::DrawTexto( 6, ::nLinhaPDF - 15, 220, NIL, "EMITIDA EM AMBIENTE DE HOMOLOGACAO", HPDF_TALIGN_CENTER, ::oPDFFontBold, 9 )
+      ::DrawTexto( 6, ::nLinhaPDF - 25, 220, NIL, "SEM VALOR FISCAL", HPDF_TALIGN_CENTER, ::oPDFFontBold, 9 )
+      ::nLinhaPDF -= 25
    ENDIF
 
    RETURN NIL
